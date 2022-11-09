@@ -1,0 +1,24 @@
+{
+  "name": "paperr-smart-contracts",
+  "version": "1.0.0",
+  "description": "ETH India 2022 Paperr project smart contract",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yede-Log/paperr-smart-contracts.git"
+  },
+  "author": "roninx991",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/Yede-Log/paperr-smart-contracts/issues"
+  },
+  "homepage": "https://github.com/Yede-Log/paperr-smart-contracts#readme",
+  "dependencies": {
+    "@opengsn/contracts": "^3.0.0-beta.1",
+    "@truffle/hdwallet-provider": "^2.1.1",
+    "dotenv": "^16.0.3"
+  }
+}
