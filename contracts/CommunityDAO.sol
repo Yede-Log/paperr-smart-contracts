@@ -1,87 +1,200 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.9.0;
 
-import "@opengsn/contracts/src/ERC2771Recipient.sol";
+import "@openzeppelin/contracts/utils/Timers.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/governance/Governor.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract CommunityDAO is ERC2771Recipient{
+contract CommunityDAO is Ownable, AccessControl {
+  	using Timers for Timers.BlockNumber;
 
-  address payable _owner;
-  uint256 public _total_members;
-  address public trustedForwarder;
-  address public _verified_contract;
+	uint256 public quorum;
+	uint256 public _total_members;
+	uint256 public _voting_period;
 
-  mapping(address => bool) public _members;
-  mapping(string => Proposal) public _proposals;
-  mapping(address => uint256) public _credibility;
+	mapping(uint256 => Proposal) private proposals;
+	mapping(address => uint256) public credibility;
 
-  event ProposalSubmit(string, address);
-  event ProposalAccepted(string, address);
-  event ProposalDeclined(string, address);
+	enum ProposalType {
+		ADD_MEMBER,
+		REMOVE_MEMBER,
+		CHANGE_MIN_VOTES
+	}
 
-  struct Proposal {
-    bool _isActive;
-    string _metadata;
-    uint256 _upvotes;
-    uint256 _downvotes;
-    address payable _proposed_member;
-    mapping(address => bool) _member_voted;
-  }
+	event ProposalCreated(
+		uint256 proposalId,
+		address proposer,
+		address target,
+		uint256 value,
+		bytes32 signatures,
+		bytes _calldata,
+		uint256 startBlock,
+		uint256 endBlock,
+		string description
+	);
 
-  constructor(address _trustedForwarder) {
-    _owner = payable(msg.sender);
-    trustedForwarder = _trustedForwarder;
-    _members[payable(msg.sender)] = true;
-    _total_members += 1;
-  }
+	struct Proposal {
+		Timers.BlockNumber voteStart;
+		Timers.BlockNumber voteEnd;
+		bool executed;
+		bool canceled;
+		uint256 votes;
+		address target;
+		uint256 value;
+		bytes _calldata;
+		bytes32 descriptionHash;
+		mapping(address => bool) members_voted;
+	}
 
-  modifier _onlyOwner {
-    require(_msgSender() == _owner, "Sender is not owner of smart contract.");
-    _;
-  }
+	enum ProposalState {
+		Pending,
+		Active,
+		Canceled,
+		Defeated,
+		Succeeded,
+		Queued,
+		Expired,
+		Executed
+	}
 
-  modifier _onlyMember {
-    require(_members[_msgSender()], "Sender is not a member of the community.");
-    _;
-  }
+	bytes32 public constant MEMBER_ROLE = keccak256("MEMBER_ROLE");
+	bytes32 public constant VERIFIED_CONTRACT_ROLE = keccak256("VERIFIED_CONTRACT_ROLE");
 
-  modifier _onlyVerified {
-    require(_msgSender() == _verified_contract, "Only verified contract can perform this action.");
-    _;
-  }
+	constructor(address _verified_contract) {
+		quorum = 1;
+		_total_members += 1;
+		_voting_period = 10000;
+		_grantRole(MEMBER_ROLE, _msgSender());
+		_grantRole(VERIFIED_CONTRACT_ROLE, _verified_contract);
+	}
 
-  function setTrustedForwarder(address _trustedForwarder) public _onlyOwner {
-    trustedForwarder = _trustedForwarder;
-  }
+	modifier onlyMember {
+		require(hasRole(MEMBER_ROLE, _msgSender()), "Signer: sender is not a member of the community.");
+		_;
+	}
 
-  function setCredibility(address _member, uint256 _credit) public _onlyVerified {
-    _credibility[_member] += _credit;
-  }
+	modifier onlyVerified {
+		require(hasRole(VERIFIED_CONTRACT_ROLE, _msgSender()), "Signer: only verified contract can perform this action.");
+		_;
+	}
 
-  function createProposal(string memory _metadata, address payable _member) public _onlyMember {
-    _proposals[_metadata]._upvotes = 1;
-    _proposals[_metadata]._isActive = true;
-    _proposals[_metadata]._metadata = _metadata;
-    _proposals[_metadata]._proposed_member = _member;
-    vote(_metadata, true);
-    emit ProposalSubmit(_metadata, _msgSender());
-  }
+	modifier onlyGovernance {
+		require(_msgSender() == address(this), "Governor: action requires voting from DAO members.");
+		_;
+	}
 
-  function vote(string memory _metadata, bool _upvote) public _onlyMember {
-    Proposal storage _proposal = _proposals[_metadata];
-    require(_proposal._isActive, "Proposal has been marked as completed.");
-    require(!_proposal._member_voted[_msgSender()], "Community member has already voted on this proposal.");
-    if (_upvote) _proposal._upvotes++;
-    else _proposal._downvotes++;
-    if (_proposal._upvotes >= _total_members / 2) {
-      _members[_proposal._proposed_member] = true;
-      _total_members++;
-      _proposal._isActive = false;
-      emit ProposalAccepted(_metadata, _proposal._proposed_member);
-    }
-    if (_proposal._downvotes > _total_members / 2) {
-      _proposal._isActive = false;
-      emit ProposalDeclined(_metadata, _proposal._proposed_member);
-    }
-    _proposal._member_voted[_msgSender()] = true;
-  }
+	function setCredibility(address _member, uint256 _credit) public onlyVerified {
+		credibility[_member] += _credit;
+	}
+
+	function quorumReached(Proposal storage proposal) internal view returns(bool) {
+		return proposal.voteEnd.getDeadline() >= block.number;
+	}
+
+	function voteSucceeded(Proposal storage proposal) internal view returns(bool) {
+		return quorumReached(proposal) && proposal.votes >= quorum;
+	}
+
+	function isMember(address payable _member) public view returns(bool) {
+		return hasRole(MEMBER_ROLE, _member);
+	}
+
+	function hashProposal(
+		uint256 value,
+		bytes memory _calldata,
+		bytes32 descriptionHash
+	) internal view returns (uint256) {
+		return uint256(keccak256(abi.encode(address(this), value, _calldata, descriptionHash)));
+	}
+
+	function state(Proposal storage proposal) internal view returns (ProposalState) {
+		if (proposal.executed) return ProposalState.Executed;
+		if (proposal.canceled) return ProposalState.Canceled;
+
+		uint256 snapshot = proposal.voteStart.getDeadline();
+
+		if (snapshot == 0) revert("Governor: unknown proposal id");
+		if (snapshot >= block.number) return ProposalState.Pending;
+
+		uint256 deadline = proposal.voteEnd.getDeadline();
+
+		if (deadline >= block.number) return ProposalState.Active;
+
+		if (quorumReached(proposal) && voteSucceeded(proposal)) return ProposalState.Succeeded;
+		else return ProposalState.Defeated;
+	}
+
+	function addMember(address payable member) public onlyGovernance {
+		require(!hasRole(MEMBER_ROLE, member), "Account: already a member.");
+		_grantRole(MEMBER_ROLE, member);
+		_total_members++;
+		credibility[member] = 1;
+	}
+
+	function removeMember(address payable member) public onlyGovernance {
+		require(hasRole(MEMBER_ROLE, member), "Account: not a member.");
+		_revokeRole(MEMBER_ROLE, member);
+		_total_members--;
+		credibility[member] = 0;
+	}
+
+	function setQuorum(uint256 _quorum) public onlyGovernance {
+		require(_quorum >= 1, "Invalid Argument: _quorum should be greater than or equal to 1");
+		quorum = _quorum;
+	}
+
+	function setVotingPeriod(uint256 _voting_period_) public onlyGovernance {
+		require(_voting_period_ >= 10000, "Invalid Argument: _voting_period_ should be greater than or equal to 10000");
+		_voting_period = _voting_period_;
+	}
+
+	function propose(
+		uint256 value,
+		bytes memory _calldata,
+		string memory description
+	) public onlyMember returns(uint256) {
+
+		uint256 proposalId = hashProposal(value, _calldata, keccak256(bytes(description)));
+
+		Proposal storage proposal = proposals[proposalId];
+		require(proposal.voteStart.isUnset(), "Governor: proposal already exists");
+
+		uint64 snapshot = uint64(block.number);
+		uint64 deadline = snapshot + uint64(_voting_period);
+
+		proposal.voteStart.setDeadline(snapshot);
+		proposal.voteEnd.setDeadline(deadline);
+
+		emit ProposalCreated(
+			proposalId,
+			_msgSender(),
+			address(this),
+			value,
+			keccak256(_msgData()),
+			_calldata,
+			snapshot,
+			deadline,
+			description
+		);
+
+		return proposalId;
+	}
+
+	function castVote(uint256 proposalId, bool support) public onlyMember {
+		Proposal storage proposal = proposals[proposalId];
+		require(state(proposal) == ProposalState.Active, "Governor: vote not currently active");
+
+		if(support) proposal.votes += 1;
+		proposal.members_voted[_msgSender()] = true;
+
+		if (voteSucceeded(proposal)) execute(proposal);
+	}
+
+	function execute(Proposal storage proposal) internal {
+		string memory errorMessage = "Governor: call reverted without message";
+		(bool success, bytes memory returndata) = address(this).call{value: proposal.value}(proposal._calldata);
+		Address.verifyCallResult(success, returndata, errorMessage);
+	}
 }
