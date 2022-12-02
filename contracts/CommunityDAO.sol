@@ -8,6 +8,10 @@ import "@openzeppelin/contracts/governance/Governor.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract CommunityDAO is Ownable, AccessControl {
+	address public EPNS_CORE_ADDRESS =0x97D7c5f14B8fe94Ef2b4bA589379f5Ec992197dA;
+    address public EPNS_COMM_ADDRESS=0x87da9Af1899ad477C67FeA31ce89c1d2435c77DC;
+	address  payable public owner;
+
   	using Timers for Timers.BlockNumber;
 
 	uint256 public quorum;
@@ -68,8 +72,13 @@ contract CommunityDAO is Ownable, AccessControl {
 		_voting_period = 10000;
 		_grantRole(MEMBER_ROLE, _msgSender());
 		_grantRole(VERIFIED_CONTRACT_ROLE, _verified_contract);
+		owner = payable(msg.sender);
 	}
 
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can perform the task");
+        _;
+    }
 	modifier onlyMember {
 		require(hasRole(MEMBER_ROLE, _msgSender()), "Signer: sender is not a member of the community.");
 		_;
@@ -138,6 +147,7 @@ contract CommunityDAO is Ownable, AccessControl {
 		_grantRole(MEMBER_ROLE, member);
 		_total_members++;
 		credibility[member] = 1;
+		_sendNotification(msg.sender, member);
 	}
 
 	function removeMember(address payable member) public onlyGovernance {
@@ -185,7 +195,7 @@ contract CommunityDAO is Ownable, AccessControl {
 			deadline,
 			description
 		);
-
+        _sendNotification(_msgSender(), _msgSender());
 		return proposalId;
 	}
 
@@ -203,5 +213,29 @@ contract CommunityDAO is Ownable, AccessControl {
 		string memory errorMessage = "Governor: call reverted without message";
 		(bool success, bytes memory returndata) = address(this).call{value: proposal.value}(proposal._calldata);
 		Address.verifyCallResult(success, returndata, errorMessage);
+	}
+
+	function createChannelWithEPNS(string memory _ipfsHash) public onlyOwner {
+        IEPNSCoreInterface(EPNS_CORE_ADDRESS).createChannelWithFees(
+            IEPNSCoreInterface.ChannelType.InterestBearingOpen,
+            bytes(string(
+            abi.encodePacked(
+                "2",
+                "+",
+                _ipfsHash
+            )
+        )),
+            50 ether
+        );
+    }
+
+	function _sendNotification(address _sender, address _receiver) {
+		IEPNSCommInterface(EPNS_COMM_ADDRESS).sendNotification(_sender, _receiver, bytes(string(
+            abi.encodePacked(
+                "1",
+                "+",
+                "QmSyKMiRvpQpiaUyXR3BmCXjSme6xFNxypD5Jn8GTBAELM"
+            )
+        )));
 	}
 }
