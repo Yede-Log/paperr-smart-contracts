@@ -6,7 +6,7 @@ import "./ReviewerToken.sol";
 import "./ReviewedAssetNFT.sol";
 import "@opengsn/contracts/src/ERC2771Recipient.sol";
 
-contract Reviewer is ERC2771Recipient {
+contract Reviewer {
 
 	address payable owner;
 	uint256 public dev_fee;
@@ -62,7 +62,7 @@ contract Reviewer is ERC2771Recipient {
 		address _trustedForwarder,
 		uint256 _reviews_required
 	) {
-		owner = payable(_msgSender());
+		owner = payable(msg.sender);
 		erc20_token = _erc20_tokenAddress;
 		erc721_token = _erc721_tokenAddress;
 		trustedForwarder = _trustedForwarder;
@@ -70,8 +70,16 @@ contract Reviewer is ERC2771Recipient {
 	}
 
 	modifier onlyOwner() {
-		require(_msgSender() == owner, "Signer: needs to be owner of smart contract");
+		require(msg.sender == owner, "Signer: needs to be owner of smart contract");
 		_;
+	}
+
+	modifier onlyMarketPlace() {
+		_;
+	}
+
+	function abs(int x) private pure returns (int) {
+    	return x >= 0 ? x : -x;
 	}
 
 	function setDevFee(uint256 _dev_fee) public onlyOwner {
@@ -97,6 +105,20 @@ contract Reviewer is ERC2771Recipient {
 		emit VerifiedCommunity(community);
 	}
 
+	function setCredibility(string memory tokenURI, uint8 rating) public onlyMarketPlace{
+		Asset storage asset = assets[tokenURI];
+		for (uint256 index = 0; index < asset.reviews.length; index++) {
+			Review storage review = asset.reviews[index];
+			
+			uint8 diff = 0;
+			if (review.rating > rating) diff = review.rating - rating; 
+			else diff = rating - review.rating;
+			
+			if (diff > 3) CommunityDAO(review.reviewer_community).setCredibility(review.reviewer, diff, false);
+			else CommunityDAO(review.reviewer_community).setCredibility(review.reviewer, diff, true);
+		}
+	}
+
 	function createAsset(
 		string memory metadata,
 		uint8 v, bytes32 r, bytes32 s,
@@ -113,7 +135,7 @@ contract Reviewer is ERC2771Recipient {
 			"Invalid Argument: asset creation fee should be greater than minimum fee payable"
 		);
 		Asset storage asset = assets[metadata];
-		asset.author = payable(_msgSender());
+		asset.author = payable(msg.sender);
 		for (uint256 index = 0; index < reviewing_communities.length; index++) {
 			require(verified_communities[reviewing_communities[index]], "Community: Unverified community provided.");
 			asset.reviewing_communities[reviewing_communities[index]] = true;
@@ -121,11 +143,11 @@ contract Reviewer is ERC2771Recipient {
 
 		ReviewerToken RWToken = ReviewerToken(erc20_token);
 		ReviewedAssetNFT RANToken = ReviewedAssetNFT(erc721_token);
-		RWToken.permit(_msgSender(), address(this), asset_creation_fee_payable, block.number + 15, v, r, s);
-		RWToken.transferFrom(_msgSender(), address(this), asset_creation_fee_payable);
-		RANToken.mintAsset(_msgSender(), metadata);
+		RWToken.permit(msg.sender, address(this), asset_creation_fee_payable, block.number + 15, v, r, s);
+		RWToken.transferFrom(msg.sender, address(this), asset_creation_fee_payable);
+		RANToken.mintAsset(msg.sender, metadata);
 
-		emit AssetCreated(_msgSender(), metadata, asset_creation_fee_payable, reviewing_communities);
+		emit AssetCreated(msg.sender, metadata, asset_creation_fee_payable, reviewing_communities);
 		return metadata;
 	}
 
@@ -142,17 +164,17 @@ contract Reviewer is ERC2771Recipient {
 		);
 		require(rating > 0, "Invalid Argument: asset rating should be greater than 0");   
 		require(asset.reviews.length <= reviews_required, "Review: asset has already been reviewed");
-		require(!asset.reviewers[_msgSender()], "Review: reviewer has already reviewed");
+		require(!asset.reviewers[msg.sender], "Review: reviewer has already reviewed");
 		require(asset.author != address(0), "Asset: does not exist");
 		require(asset.reviewing_communities[community], "Asset: community is not allowed to review");
-		require(CommunityDAO(community).isMember(payable(_msgSender())), "Review: reviewer is not member of community");
+		require(CommunityDAO(community).isMember(payable(msg.sender)), "Review: reviewer is not member of community");
 
-		Review memory review = Review(rating, review_metadata, payable(_msgSender()), community);
+		Review memory review = Review(rating, review_metadata, payable(msg.sender), community);
 		ERC20Permit RWToken = ERC20Permit(erc20_token);
 
-		uint256 reviewer_credibility = CommunityDAO(community).credibility(_msgSender());
+		uint256 reviewer_credibility = CommunityDAO(community).credibility(msg.sender);
 
-		asset.reviewers[_msgSender()] = true;
+		asset.reviewers[msg.sender] = true;
 		asset.reviews.push(review);
 		
 		asset.avg_rating = (
@@ -167,7 +189,7 @@ contract Reviewer is ERC2771Recipient {
 			}
 		}
 
-		emit AssetReviewed(rating, metadata, _msgSender(), community, review_metadata);
+		emit AssetReviewed(rating, metadata, msg.sender, community, review_metadata);
 		return rating;
 	}
 }

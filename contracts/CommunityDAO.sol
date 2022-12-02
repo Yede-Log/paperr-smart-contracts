@@ -85,8 +85,15 @@ contract CommunityDAO is Ownable, AccessControl {
 		_;
 	}
 
-	function setCredibility(address _member, uint256 _credit) public onlyVerified {
-		credibility[_member] += _credit;
+	function setCredibility(address _member, uint256 _credit, bool increase) public onlyVerified {
+		int256 member_credibility = int256(credibility[_member]);
+		if (increase) {
+			member_credibility += int256(_credit);
+		} else {
+			if (int256(_credit) > member_credibility) member_credibility = 1;
+			else member_credibility -= int256(_credit);
+		}
+		credibility[_member] = uint256(member_credibility);
 	}
 
 	function quorumReached(Proposal storage proposal) internal view returns(bool) {

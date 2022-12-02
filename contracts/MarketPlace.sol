@@ -5,12 +5,15 @@ import "./ReviewerToken.sol";
 import "./ReviewedAssetNFT.sol";
 import "@openzeppelin/contracts/utils/Timers.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 contract RANMarketPlace is Ownable {
     using Timers for Timers.BlockNumber;
+    using EnumerableMap for EnumerableMap.AddressToUintMap;
 
 	address public erc20_token;
 	address public erc721_token;
+    address public reviewer_contract;
 
     enum ListingState {
         ACTIVE,
@@ -22,24 +25,21 @@ contract RANMarketPlace is Ownable {
         uint256 basePrice;
         ListingState state;
         address payable owner;
-        mapping(address => Bid) bids;
         Timers.BlockNumber biddingStart;
         Timers.BlockNumber biddingEnd;
+        EnumerableMap.AddressToUintMap bidRatings;
+        EnumerableMap.AddressToUintMap bidAmounts;
     }
 
     mapping(address => mapping(uint256 => Listing)) listings;
 
-    struct Bid {
-        uint256 amount;
-        uint8 asset_rating;
-        bool active;
-        Timers.BlockNumber start;
-        Timers.BlockNumber end;
-    }
-
     constructor(address _erc20_tokenAddress, address _erc721_tokenAddress) {
 		erc20_token = _erc20_tokenAddress;
 		erc721_token = _erc721_tokenAddress;
+    }
+
+    function setReviewerContract(address _reviewer_contract) public onlyOwner{
+        reviewer_contract = _reviewer_contract;
     }
 
     function createListing(uint256 _tokenId, uint256 _basePrice, uint64 period) public {
@@ -54,25 +54,35 @@ contract RANMarketPlace is Ownable {
     function bid(
         address payable _owner,
         uint256 _tokenId, uint256 _amount,
-        uint64 bidPeriod, uint8 _rating,
-		uint8 v, bytes32 r, bytes32 s
+        uint8 _rating, uint8 v, bytes32 r, bytes32 s
     ) public {
         Listing storage listing = listings[_owner][_tokenId];
-        listing.bids[_msgSender()].active = true;    
-        listing.bids[_msgSender()].amount = _amount;
-        listing.bids[_msgSender()].asset_rating = _rating;
-        listing.bids[_msgSender()].start.setDeadline(uint64(block.number));
-        listing.bids[_msgSender()].end.setDeadline(uint64(block.number + bidPeriod));
+        EnumerableMap.set(listing.bidAmounts, _msgSender(), _amount);
+        EnumerableMap.set(listing.bidRatings, _msgSender(), _rating);
 		ReviewerToken RWToken = ReviewerToken(erc20_token);
-        RWToken.permit(_msgSender(), address(this), _amount, block.number + bidPeriod, v, r, s);
+        RWToken.permit(_msgSender(), address(this), _amount, listing.biddingEnd.getDeadline(), v, r, s);
     }
 
-    function withdrawBid() public {
-
+    function withdrawBid(
+        uint256 _tokenId, address _owner
+    ) public {
+        Listing storage listing = listings[_owner][_tokenId];
+        EnumerableMap.remove(listing.bidAmounts, _msgSender());
+        EnumerableMap.remove(listing.bidRatings, _msgSender());
     }
 
-    function acceptBid() public {
-
+    function acceptBid(uint256 _tokenId, address _bidder) public {
+        Listing storage listing = listings[_msgSender()][_tokenId];
+        ReviewerToken RWToken = ReviewerToken(erc20_token);
+        ReviewedAssetNFT RANToken = ReviewedAssetNFT(erc721_token);
+        RANToken.tokenURI(_tokenId);
+        RANToken.transferFrom(_msgSender(), _bidder, _tokenId);
+        RWToken.transferFrom(_bidder, _msgSender(), EnumerableMap.get(listing.bidAmounts, _bidder));
+        for (uint256 index = 0; index < EnumerableMap.length(listings[_msgSender()][_tokenId].bidAmounts); index++) {
+            (address key, ) = EnumerableMap.at(listing.bidAmounts, index);
+            EnumerableMap.remove(listing.bidAmounts, key);
+        }
+        delete listings[_msgSender()][_tokenId];
     }
 
 }
