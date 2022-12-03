@@ -3,19 +3,27 @@ pragma solidity >=0.4.22 <0.9.0;
 
 import "@openzeppelin/contracts/utils/Timers.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/governance/Governor.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract CommunityDAO is Ownable, AccessControl {
+import "./lib/GenesisUtils.sol";
+import "./verifiers/ZKPVerifier.sol";
+
+contract CommunityDAO is ZKPVerifier, AccessControl {
   	using Timers for Timers.BlockNumber;
 
 	uint256 public quorum;
 	uint256 public _total_members;
 	uint256 public _voting_period;
 
-	mapping(uint256 => Proposal) private proposals;
+    uint64 public constant MEMBERSHIP_REQUEST_ID = 1;
+
+	mapping(address => uint64) public last_block_request;
+	mapping(uint256 => address) public idToAddress;
+    mapping(address => uint256) public addressToId;
+
+	mapping(uint256 => Proposal) public proposals;
 	mapping(address => uint256) public credibility;
+	mapping(address => Proposal) public membership_proposals;
 
 	enum ProposalType {
 		ADD_MEMBER,
@@ -23,17 +31,11 @@ contract CommunityDAO is Ownable, AccessControl {
 		CHANGE_MIN_VOTES
 	}
 
-	event ProposalCreated(
-		uint256 proposalId,
-		address proposer,
-		address target,
-		uint256 value,
-		bytes32 signatures,
-		bytes _calldata,
-		uint256 startBlock,
-		uint256 endBlock,
-		string description
-	);
+	event ProposalCreated(uint256 proposalId, address proposer, address target, uint256 value,
+  	 bytes32 signatures, bytes _calldata, uint256 startBlock, uint256 endBlock, string description);
+
+	event MembershipProposalCreate(address proposer, address new_member, uint64 voteStart,
+	 uint64 voteEnd, bytes32 descriptionHash);
 
 	struct Proposal {
 		Timers.BlockNumber voteStart;
@@ -47,6 +49,14 @@ contract CommunityDAO is Ownable, AccessControl {
 		bytes32 descriptionHash;
 		mapping(address => bool) members_voted;
 	}
+
+	struct MembershipCriteria {
+		uint8 degree;
+		uint256[] institutions;
+		mapping(uint256 => bool) allowed_institutions;
+	}
+
+	MembershipCriteria public criteria;
 
 	enum ProposalState {
 		Pending,
@@ -104,7 +114,7 @@ contract CommunityDAO is Ownable, AccessControl {
 		return quorumReached(proposal) && proposal.votes >= quorum;
 	}
 
-	function isMember(address payable _member) public view returns(bool) {
+	function isMember(address _member) public view returns(bool) {
 		return hasRole(MEMBER_ROLE, _member);
 	}
 
@@ -133,18 +143,11 @@ contract CommunityDAO is Ownable, AccessControl {
 		else return ProposalState.Defeated;
 	}
 
-	function addMember(address payable member) public onlyGovernance {
+	function addMember(address member) public onlyGovernance {
 		require(!hasRole(MEMBER_ROLE, member), "Account: already a member.");
 		_grantRole(MEMBER_ROLE, member);
 		_total_members++;
 		credibility[member] = 1;
-	}
-
-	function removeMember(address payable member) public onlyGovernance {
-		require(hasRole(MEMBER_ROLE, member), "Account: not a member.");
-		_revokeRole(MEMBER_ROLE, member);
-		_total_members--;
-		credibility[member] = 0;
 	}
 
 	function setQuorum(uint256 _quorum) public onlyGovernance {
@@ -152,9 +155,77 @@ contract CommunityDAO is Ownable, AccessControl {
 		quorum = _quorum;
 	}
 
-	function setVotingPeriod(uint256 _voting_period_) public onlyGovernance {
-		require(_voting_period_ >= 10000, "Invalid Argument: _voting_period_ should be greater than or equal to 10000");
-		_voting_period = _voting_period_;
+	function setMembershipCriteria(uint8 _degree, uint256[] memory _allowed_institutions) public onlyGovernance {
+		criteria.degree = _degree;
+		for (uint256 index = 0; index < criteria.institutions.length; index++) {
+			criteria.allowed_institutions[criteria.institutions[index]] = false;
+		}
+		for (uint256 index = 0; index < _allowed_institutions.length; index++) {
+			criteria.allowed_institutions[_allowed_institutions[index]] = true;	
+		}
+	}
+
+	function _beforeProofSubmit(
+        uint64, /* requestId */
+        uint256[] memory inputs,
+        ICircuitValidator validator
+    ) internal view override {
+        // check that challenge input of the proof is equal to the msg.sender 
+        address addr = GenesisUtils.int256ToAddress(
+            inputs[validator.getChallengeInputIndex()]
+        );
+        require(
+            _msgSender() == addr,
+            "address in proof is not a sender address"
+        );
+    }
+
+    function _afterProofSubmit(
+        uint64 requestId,
+        uint256[] memory inputs,
+        ICircuitValidator validator
+    ) internal override {
+        require(
+            requestId == MEMBERSHIP_REQUEST_ID && block.number - last_block_request[_msgSender()] > 10000,
+            "need to wait 10000 blocks before applying again"
+        );
+		require(!hasRole(MEMBER_ROLE, _msgSender()), "is already a member");
+
+        uint256 id = inputs[validator.getChallengeInputIndex()];
+        if (idToAddress[id] == address(0)) {
+            addressToId[_msgSender()] = id;
+            idToAddress[id] = _msgSender();
+			_proposeMembership(_msgSender(), "Membership Proposal via Polygon ID");
+        }
+    }
+
+	function _beforeProposeMembership(address _new_member) internal view {
+		require(proofs[_new_member][MEMBERSHIP_REQUEST_ID], "only identities who provided proof are allowed to join");
+	}
+
+	function _proposeMembership(address _new_member, string memory descriptionHash) internal {
+
+		_beforeProposeMembership(_new_member);
+		
+		Proposal storage proposal = membership_proposals[_new_member];
+
+		proposal.descriptionHash = keccak256(bytes(descriptionHash));
+
+		require(proposal.voteStart.isUnset(), "Governor: proposal already exists");
+
+		uint64 snapshot = uint64(block.number);
+		uint64 deadline = snapshot + uint64(_voting_period);
+
+		proposal.voteStart.setDeadline(snapshot);
+		proposal.voteEnd.setDeadline(deadline);
+
+		emit MembershipProposalCreate(
+			_msgSender(),
+			_new_member,
+			proposal.voteStart.getDeadline(),
+			proposal.voteEnd.getDeadline(),
+			proposal.descriptionHash
+		);
 	}
 
 	function propose(
@@ -197,6 +268,16 @@ contract CommunityDAO is Ownable, AccessControl {
 		proposal.members_voted[_msgSender()] = true;
 
 		if (voteSucceeded(proposal)) execute(proposal);
+	}
+
+	function castVoteMembership(address _new_member, bool support) public onlyMember {
+		Proposal storage proposal = membership_proposals[_new_member];
+		require(state(proposal) == ProposalState.Active, "Governor: vote not currently active");
+
+		if(support) proposal.votes += 1;
+		proposal.members_voted[_msgSender()] = true;
+
+		if (voteSucceeded(proposal)) addMember(_new_member);
 	}
 
 	function execute(Proposal storage proposal) internal {

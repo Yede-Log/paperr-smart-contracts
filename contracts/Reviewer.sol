@@ -78,10 +78,6 @@ contract Reviewer {
 		_;
 	}
 
-	function abs(int x) private pure returns (int) {
-    	return x >= 0 ? x : -x;
-	}
-
 	function setDevFee(uint256 _dev_fee) public onlyOwner {
 		dev_fee = _dev_fee;
 		emit DevFeeUpdated(dev_fee);
@@ -105,7 +101,7 @@ contract Reviewer {
 		emit VerifiedCommunity(community);
 	}
 
-	function setCredibility(string memory tokenURI, uint8 rating) public onlyMarketPlace{
+	function setCredibility(string memory tokenURI, uint8 rating) public onlyOwner {
 		Asset storage asset = assets[tokenURI];
 		for (uint256 index = 0; index < asset.reviews.length; index++) {
 			Review storage review = asset.reviews[index];

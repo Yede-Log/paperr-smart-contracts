@@ -54,13 +54,11 @@ contract RANMarketPlace is Ownable {
     function bid(
         address payable _owner,
         uint256 _tokenId, uint256 _amount,
-        uint8 _rating, uint8 v, bytes32 r, bytes32 s
+        uint8 _rating
     ) public {
         Listing storage listing = listings[_owner][_tokenId];
         EnumerableMap.set(listing.bidAmounts, _msgSender(), _amount);
         EnumerableMap.set(listing.bidRatings, _msgSender(), _rating);
-		ReviewerToken RWToken = ReviewerToken(erc20_token);
-        RWToken.permit(_msgSender(), address(this), _amount, listing.biddingEnd.getDeadline(), v, r, s);
     }
 
     function withdrawBid(
