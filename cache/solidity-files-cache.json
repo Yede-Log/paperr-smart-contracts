@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "D:\\sanga\\Projects\\paperr-smart-contracts\\contracts\\CommunityDAO.sol": {
-      "lastModificationDate": 1670072667840,
-      "contentHash": "599f826561843a3e7ea59a7f216afe47",
+      "lastModificationDate": 1670074761020,
+      "contentHash": "c9b420d5568faa9ef2aa89c3c9afaab1",
       "sourceName": "contracts/CommunityDAO.sol",
       "solcConfig": {
         "version": "0.8.17",

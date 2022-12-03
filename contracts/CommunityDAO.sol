@@ -21,7 +21,6 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 	mapping(uint256 => address) public idToAddress;
     mapping(address => uint256) public addressToId;
 
-	mapping(uint256 => Proposal) public proposals;
 	mapping(address => uint256) public credibility;
 	mapping(address => Proposal) public membership_proposals;
 
@@ -31,20 +30,15 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		CHANGE_MIN_VOTES
 	}
 
-	event ProposalCreated(uint256 proposalId, address proposer, address target, uint256 value,
-  	 bytes32 signatures, bytes _calldata, uint256 startBlock, uint256 endBlock, string description);
-
 	event MembershipProposalCreate(address proposer, address new_member, uint64 voteStart,
-	 uint64 voteEnd, bytes32 descriptionHash);
+	 uint64 voteEnd, string descriptionHash);
 
 	event QuorumUpdated(uint256 quorum);
 	event MemberAdded(address member, address community);
 	event MembershipCriteriaUpdated(uint256 min_degree, uint256[] institutes);
 
-	event Voted(address member, bool support, bytes32 descriptionHash);
+	event Voted(address member, bool support, string descriptionHash);
 	event CredibilityUpdated(address member, int256 credibility);
-
-	event ProposalExecuted(address member, bytes32 descriptionHash);
 
 	struct Proposal {
 		Timers.BlockNumber voteStart;
@@ -52,10 +46,7 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		bool executed;
 		bool canceled;
 		uint256 votes;
-		address target;
-		uint256 value;
-		bytes _calldata;
-		bytes32 descriptionHash;
+		string descriptionHash;
 		mapping(address => bool) members_voted;
 	}
 
@@ -96,11 +87,6 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 
 	modifier onlyVerified {
 		require(hasRole(VERIFIED_CONTRACT_ROLE, _msgSender()), "Signer: only verified contract can perform this action.");
-		_;
-	}
-
-	modifier onlyGovernance {
-		require(_msgSender() == address(this), "Governor: action requires voting from DAO members.");
 		_;
 	}
 
@@ -161,20 +147,20 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		else return ProposalState.Defeated;
 	}
 
-	function addMember(address member) public onlyGovernance {
+	function addMember(address member) internal {
 		require(!hasRole(MEMBER_ROLE, member), "Account: already a member.");
 		_grantRole(MEMBER_ROLE, member);
 		_total_members++;
 		credibility[member] = 1;
 	}
 
-	function setQuorum(uint256 _quorum) public onlyGovernance {
+	function setQuorum(uint256 _quorum) public onlyOwner {
 		require(_quorum >= 1, "Invalid Argument: _quorum should be greater than or equal to 1");
 		quorum = _quorum;
 		emit QuorumUpdated(_quorum);
 	}
 
-	function setMembershipCriteria(uint8 _degree, uint256[] memory _allowed_institutions) public onlyGovernance {
+	function setMembershipCriteria(uint8 _degree, uint256[] memory _allowed_institutions) public onlyOwner {
 		criteria.degree = _degree;
 		for (uint256 index = 0; index < criteria.institutions.length; index++) {
 			criteria.allowed_institutions[criteria.institutions[index]] = false;
@@ -229,7 +215,7 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		
 		Proposal storage proposal = membership_proposals[_new_member];
 
-		proposal.descriptionHash = keccak256(bytes(descriptionHash));
+		proposal.descriptionHash = descriptionHash;
 
 		require(proposal.voteStart.isUnset(), "Governor: proposal already exists");
 
@@ -248,50 +234,6 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		);
 	}
 
-	function propose(
-		uint256 value,
-		bytes memory _calldata,
-		string memory description
-	) public onlyMember returns(uint256) {
-
-		uint256 proposalId = hashProposal(value, _calldata, keccak256(bytes(description)));
-
-		Proposal storage proposal = proposals[proposalId];
-		require(proposal.voteStart.isUnset(), "Governor: proposal already exists");
-
-		uint64 snapshot = uint64(block.number);
-		uint64 deadline = snapshot + uint64(_voting_period);
-
-		proposal.voteStart.setDeadline(snapshot);
-		proposal.voteEnd.setDeadline(deadline);
-
-		emit ProposalCreated(
-			proposalId,
-			_msgSender(),
-			address(this),
-			value,
-			keccak256(_msgData()),
-			_calldata,
-			snapshot,
-			deadline,
-			description
-		);
-
-		return proposalId;
-	}
-
-	function castVote(uint256 proposalId, bool support) public onlyMember {
-		Proposal storage proposal = proposals[proposalId];
-		require(state(proposal) == ProposalState.Active, "Governor: vote not currently active");
-
-		if(support) proposal.votes += 1;
-		proposal.members_voted[_msgSender()] = true;
-
-		emit Voted(_msgSender(), support, proposal.descriptionHash);
-
-		if (voteSucceeded(proposal)) execute(proposal);
-	}
-
 	function castVoteMembership(address _new_member, bool support) public onlyMember {
 		Proposal storage proposal = membership_proposals[_new_member];
 		require(state(proposal) == ProposalState.Active, "Governor: vote not currently active");
@@ -302,11 +244,5 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		emit Voted(_msgSender(), support, proposal.descriptionHash);
 
 		if (voteSucceeded(proposal)) addMember(_new_member);
-	}
-
-	function execute(Proposal storage proposal) internal {
-		string memory errorMessage = "Governor: call reverted without message";
-		(bool success, bytes memory returndata) = address(this).call{value: proposal.value}(proposal._calldata);
-		Address.verifyCallResult(success, returndata, errorMessage);
 	}
 }

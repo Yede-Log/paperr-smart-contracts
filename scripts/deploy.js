@@ -34,7 +34,7 @@ async function main() {
   const CommunityDAODeployed = await CommunityDAOContract.deploy("0xbB28943afF29Be40ABDBB479bc5D3B6c32DB88BC");
 
   await CommunityDAODeployed.deployed();
-  console.log(CommunityDAO, " tx hash:", CommunityDAODeployed.address); // 0x61a1f0A576BDE23D3ff13842625C4eFF7b457136
+  console.log(CommunityDAO, " tx hash:", CommunityDAODeployed.address); // 0x3228647198E56B5B5fCf90638F1425e11885938d
 
 }
 main()
