@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "D:\\sanga\\Projects\\paperr-smart-contracts\\contracts\\CommunityDAO.sol": {
-      "lastModificationDate": 1670044685112,
-      "contentHash": "7943769651dcc16f53c0d88a0fe8c100",
+      "lastModificationDate": 1670072667840,
+      "contentHash": "599f826561843a3e7ea59a7f216afe47",
       "sourceName": "contracts/CommunityDAO.sol",
       "solcConfig": {
         "version": "0.8.17",
@@ -706,8 +706,8 @@
       ]
     },
     "D:\\sanga\\Projects\\paperr-smart-contracts\\contracts\\Reviewer.sol": {
-      "lastModificationDate": 1670041967342,
-      "contentHash": "2ca16b9c696a2ee398fd08d87a440292",
+      "lastModificationDate": 1670071054965,
+      "contentHash": "ed1a9460c1038d55c76f1a86eab43145",
       "sourceName": "contracts/Reviewer.sol",
       "solcConfig": {
         "version": "0.8.17",
@@ -735,8 +735,7 @@
       "imports": [
         "./CommunityDAO.sol",
         "./ReviewerToken.sol",
-        "./ReviewedAssetNFT.sol",
-        "@opengsn/contracts/src/ERC2771Recipient.sol"
+        "./ReviewedAssetNFT.sol"
       ],
       "versionPragmas": [
         ">=0.4.22 <0.9.0"
@@ -1456,8 +1455,8 @@
       ]
     },
     "D:\\sanga\\Projects\\paperr-smart-contracts\\contracts\\MarketPlace.sol": {
-      "lastModificationDate": 1670012425147,
-      "contentHash": "ae85a3b7086245bd6c73e43c06bc45b6",
+      "lastModificationDate": 1670073086331,
+      "contentHash": "5d847423dfd9579c1fd02b7d2ef6411c",
       "sourceName": "contracts/MarketPlace.sol",
       "solcConfig": {
         "version": "0.8.17",

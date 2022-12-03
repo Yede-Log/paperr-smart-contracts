@@ -31,6 +31,11 @@ contract RANMarketPlace is Ownable {
         EnumerableMap.AddressToUintMap bidAmounts;
     }
 
+    event ListingCreated(address owner, uint256 metadata);
+    event BidCreated(address bidder, uint256 metadata, uint256 amount);
+    event BidAccepted(address owner, address bidder, uint256 metadata, uint256 amount);
+    event BidWithdrawn(address bidder, uint256 metadata);
+
     mapping(address => mapping(uint256 => Listing)) listings;
 
     constructor(address _erc20_tokenAddress, address _erc721_tokenAddress) {
@@ -49,6 +54,7 @@ contract RANMarketPlace is Ownable {
         listing.biddingStart.setDeadline(uint64(block.number));
         listing.biddingEnd.setDeadline(uint64(block.number + period));
         listing.state = ListingState.ACTIVE;
+        emit ListingCreated(_msgSender(), _tokenId);
     }
 
     function bid(
@@ -59,6 +65,7 @@ contract RANMarketPlace is Ownable {
         Listing storage listing = listings[_owner][_tokenId];
         EnumerableMap.set(listing.bidAmounts, _msgSender(), _amount);
         EnumerableMap.set(listing.bidRatings, _msgSender(), _rating);
+        emit BidCreated(_msgSender(), _tokenId, _amount);
     }
 
     function withdrawBid(
@@ -67,6 +74,7 @@ contract RANMarketPlace is Ownable {
         Listing storage listing = listings[_owner][_tokenId];
         EnumerableMap.remove(listing.bidAmounts, _msgSender());
         EnumerableMap.remove(listing.bidRatings, _msgSender());
+        emit BidWithdrawn(_msgSender(), _tokenId);
     }
 
     function acceptBid(uint256 _tokenId, address _bidder) public {
@@ -76,6 +84,7 @@ contract RANMarketPlace is Ownable {
         RANToken.tokenURI(_tokenId);
         RANToken.transferFrom(_msgSender(), _bidder, _tokenId);
         RWToken.transferFrom(_bidder, _msgSender(), EnumerableMap.get(listing.bidAmounts, _bidder));
+        emit BidAccepted(_msgSender(), _bidder, _tokenId, EnumerableMap.get(listing.bidAmounts, _bidder));
         for (uint256 index = 0; index < EnumerableMap.length(listings[_msgSender()][_tokenId].bidAmounts); index++) {
             (address key, ) = EnumerableMap.at(listing.bidAmounts, index);
             EnumerableMap.remove(listing.bidAmounts, key);

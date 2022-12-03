@@ -4,15 +4,14 @@ pragma solidity >=0.4.22 <0.9.0;
 import "./CommunityDAO.sol";
 import "./ReviewerToken.sol";
 import "./ReviewedAssetNFT.sol";
-import "@opengsn/contracts/src/ERC2771Recipient.sol";
 
-contract Reviewer {
+contract Reviewer is Context {
 
 	address payable owner;
 	uint256 public dev_fee;
 	address public erc20_token;
 	address public erc721_token;
-	address public trustedForwarder;
+	address public market_place;
 	uint256 public reviews_required;
 	uint256 public minimum_asset_creation_fee;
 
@@ -59,22 +58,21 @@ contract Reviewer {
 	constructor(
 		address _erc20_tokenAddress,
 		address _erc721_tokenAddress,
-		address _trustedForwarder,
 		uint256 _reviews_required
 	) {
-		owner = payable(msg.sender);
+		owner = payable(_msgSender());
 		erc20_token = _erc20_tokenAddress;
 		erc721_token = _erc721_tokenAddress;
-		trustedForwarder = _trustedForwarder;
 		reviews_required = _reviews_required;
 	}
 
 	modifier onlyOwner() {
-		require(msg.sender == owner, "Signer: needs to be owner of smart contract");
+		require(_msgSender() == owner, "Signer: needs to be owner of smart contract");
 		_;
 	}
 
 	modifier onlyMarketPlace() {
+		require(_msgSender() == market_place, "marketplace can perform this action");
 		_;
 	}
 
@@ -131,7 +129,7 @@ contract Reviewer {
 			"Invalid Argument: asset creation fee should be greater than minimum fee payable"
 		);
 		Asset storage asset = assets[metadata];
-		asset.author = payable(msg.sender);
+		asset.author = payable(_msgSender());
 		for (uint256 index = 0; index < reviewing_communities.length; index++) {
 			require(verified_communities[reviewing_communities[index]], "Community: Unverified community provided.");
 			asset.reviewing_communities[reviewing_communities[index]] = true;
@@ -139,11 +137,11 @@ contract Reviewer {
 
 		ReviewerToken RWToken = ReviewerToken(erc20_token);
 		ReviewedAssetNFT RANToken = ReviewedAssetNFT(erc721_token);
-		RWToken.permit(msg.sender, address(this), asset_creation_fee_payable, block.number + 15, v, r, s);
-		RWToken.transferFrom(msg.sender, address(this), asset_creation_fee_payable);
-		RANToken.mintAsset(msg.sender, metadata);
+		RWToken.permit(_msgSender(), address(this), asset_creation_fee_payable, block.number + 15, v, r, s);
+		RWToken.transferFrom(_msgSender(), address(this), asset_creation_fee_payable);
+		RANToken.mintAsset(_msgSender(), metadata);
 
-		emit AssetCreated(msg.sender, metadata, asset_creation_fee_payable, reviewing_communities);
+		emit AssetCreated(_msgSender(), metadata, asset_creation_fee_payable, reviewing_communities);
 		return metadata;
 	}
 
@@ -160,17 +158,17 @@ contract Reviewer {
 		);
 		require(rating > 0, "Invalid Argument: asset rating should be greater than 0");   
 		require(asset.reviews.length <= reviews_required, "Review: asset has already been reviewed");
-		require(!asset.reviewers[msg.sender], "Review: reviewer has already reviewed");
+		require(!asset.reviewers[_msgSender()], "Review: reviewer has already reviewed");
 		require(asset.author != address(0), "Asset: does not exist");
 		require(asset.reviewing_communities[community], "Asset: community is not allowed to review");
-		require(CommunityDAO(community).isMember(payable(msg.sender)), "Review: reviewer is not member of community");
+		require(CommunityDAO(community).isMember(payable(_msgSender())), "Review: reviewer is not member of community");
 
-		Review memory review = Review(rating, review_metadata, payable(msg.sender), community);
+		Review memory review = Review(rating, review_metadata, payable(_msgSender()), community);
 		ERC20Permit RWToken = ERC20Permit(erc20_token);
 
-		uint256 reviewer_credibility = CommunityDAO(community).credibility(msg.sender);
+		uint256 reviewer_credibility = CommunityDAO(community).credibility(_msgSender());
 
-		asset.reviewers[msg.sender] = true;
+		asset.reviewers[_msgSender()] = true;
 		asset.reviews.push(review);
 		
 		asset.avg_rating = (
@@ -185,7 +183,7 @@ contract Reviewer {
 			}
 		}
 
-		emit AssetReviewed(rating, metadata, msg.sender, community, review_metadata);
+		emit AssetReviewed(rating, metadata, _msgSender(), community, review_metadata);
 		return rating;
 	}
 }

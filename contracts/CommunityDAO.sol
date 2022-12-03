@@ -37,6 +37,15 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 	event MembershipProposalCreate(address proposer, address new_member, uint64 voteStart,
 	 uint64 voteEnd, bytes32 descriptionHash);
 
+	event QuorumUpdated(uint256 quorum);
+	event MemberAdded(address member, address community);
+	event MembershipCriteriaUpdated(uint256 min_degree, uint256[] institutes);
+
+	event Voted(address member, bool support, bytes32 descriptionHash);
+	event CredibilityUpdated(address member, int256 credibility);
+
+	event ProposalExecuted(address member, bytes32 descriptionHash);
+
 	struct Proposal {
 		Timers.BlockNumber voteStart;
 		Timers.BlockNumber voteEnd;
@@ -104,6 +113,15 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 			else member_credibility -= int256(_credit);
 		}
 		credibility[_member] = uint256(member_credibility);
+		emit CredibilityUpdated(_member, member_credibility);
+	}
+
+	function addVerifiedContract(address _verified_contract) public onlyOwner {
+		_grantRole(VERIFIED_CONTRACT_ROLE, _verified_contract);
+	}
+
+	function removeVerifiedContract(address _verified_contract) public onlyOwner {
+		_revokeRole(VERIFIED_CONTRACT_ROLE, _verified_contract);
 	}
 
 	function quorumReached(Proposal storage proposal) internal view returns(bool) {
@@ -153,6 +171,7 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 	function setQuorum(uint256 _quorum) public onlyGovernance {
 		require(_quorum >= 1, "Invalid Argument: _quorum should be greater than or equal to 1");
 		quorum = _quorum;
+		emit QuorumUpdated(_quorum);
 	}
 
 	function setMembershipCriteria(uint8 _degree, uint256[] memory _allowed_institutions) public onlyGovernance {
@@ -163,6 +182,7 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		for (uint256 index = 0; index < _allowed_institutions.length; index++) {
 			criteria.allowed_institutions[_allowed_institutions[index]] = true;	
 		}
+		emit MembershipCriteriaUpdated(_degree, _allowed_institutions);
 	}
 
 	function _beforeProofSubmit(
@@ -267,6 +287,8 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 		if(support) proposal.votes += 1;
 		proposal.members_voted[_msgSender()] = true;
 
+		emit Voted(_msgSender(), support, proposal.descriptionHash);
+
 		if (voteSucceeded(proposal)) execute(proposal);
 	}
 
@@ -276,6 +298,8 @@ contract CommunityDAO is ZKPVerifier, AccessControl {
 
 		if(support) proposal.votes += 1;
 		proposal.members_voted[_msgSender()] = true;
+
+		emit Voted(_msgSender(), support, proposal.descriptionHash);
 
 		if (voteSucceeded(proposal)) addMember(_new_member);
 	}
