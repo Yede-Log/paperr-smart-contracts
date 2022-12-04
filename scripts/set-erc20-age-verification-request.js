@@ -21,7 +21,7 @@ async function main() {
   };
 
   // add the address of the contract just deployed
-  ReviewerTokenAddress = "0xf115cA1eC48B77EE031BE4d7E429244cC928d42B";
+  ReviewerTokenAddress = "0xAB587C0e6460331E7A528e93D9878e847b27aa15";
 
   let ReviewerTokenContract = await hre.ethers.getContractAt(
     "ReviewerToken",

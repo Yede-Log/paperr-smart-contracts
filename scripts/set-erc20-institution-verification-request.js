@@ -21,7 +21,7 @@ async function main() {
   };
 
   // add the address of the contract just deployed
-  CommunityDAOAddress = "0xB375b3E6a7A4eA40b1D0b4c5b04ad9D73C38553a";
+  CommunityDAOAddress = "0x3228647198E56B5B5fCf90638F1425e11885938d";
 
   let CommunityDAOContract = await hre.ethers.getContractAt(
     "CommunityDAO",

@@ -1,12 +1,12 @@
 async function main() {
-  // const ReviewerTokenContract = "ReviewerToken";
-  // const verifierName = "ReviewerToken";
-  // const verifierSymbol = "RWT";
-  // const ReviewerToken = await ethers.getContractFactory(ReviewerTokenContract);
-  // const ReviewerTokenDeployed = await ReviewerToken.deploy(10000000, 100);
+  const ReviewerTokenContract = "ReviewerToken";
+  const verifierName = "ReviewerToken";
+  const verifierSymbol = "RWT";
+  const ReviewerToken = await ethers.getContractFactory(ReviewerTokenContract);
+  const ReviewerTokenDeployed = await ReviewerToken.deploy(10000000, 100);
 
-  // await ReviewerTokenDeployed.deployed();
-  // console.log(verifierName, " tx hash:", ReviewerTokenDeployed.address); // 0xf115cA1eC48B77EE031BE4d7E429244cC928d42B
+  await ReviewerTokenDeployed.deployed();
+  console.log(verifierName, " tx hash:", ReviewerTokenDeployed.address); // 0xAB587C0e6460331E7A528e93D9878e847b27aa15
 
   // const ReviewedAssetNFTContractName = "ReviewedAssetNFT";
   // const ReviewedAssetNFTContract = await ethers.getContractFactory(ReviewedAssetNFTContractName);
@@ -29,12 +29,12 @@ async function main() {
   // await ReviewerDeployed.deployed();
   // console.log(Reviewer, " tx hash:", ReviewerDeployed.address); // 0xbB28943afF29Be40ABDBB479bc5D3B6c32DB88BC
 
-  const CommunityDAO = "CommunityDAO";
-  const CommunityDAOContract = await ethers.getContractFactory(CommunityDAO);
-  const CommunityDAODeployed = await CommunityDAOContract.deploy("0xbB28943afF29Be40ABDBB479bc5D3B6c32DB88BC");
+  // const CommunityDAO = "CommunityDAO";
+  // const CommunityDAOContract = await ethers.getContractFactory(CommunityDAO);
+  // const CommunityDAODeployed = await CommunityDAOContract.deploy("0xbB28943afF29Be40ABDBB479bc5D3B6c32DB88BC");
 
-  await CommunityDAODeployed.deployed();
-  console.log(CommunityDAO, " tx hash:", CommunityDAODeployed.address); // 0x3228647198E56B5B5fCf90638F1425e11885938d
+  // await CommunityDAODeployed.deployed();
+  // console.log(CommunityDAO, " tx hash:", CommunityDAODeployed.address); // 0x3228647198E56B5B5fCf90638F1425e11885938d
 
 }
 main()

@@ -164,7 +164,7 @@ contract Reviewer is Context {
 		require(CommunityDAO(community).isMember(payable(_msgSender())), "Review: reviewer is not member of community");
 
 		Review memory review = Review(rating, review_metadata, payable(_msgSender()), community);
-		ERC20Permit RWToken = ERC20Permit(erc20_token);
+		ReviewerToken RWToken = ReviewerToken(erc20_token);
 
 		uint256 reviewer_credibility = CommunityDAO(community).credibility(_msgSender());
 
